@@ -270,6 +270,7 @@ def woe_encoding(trn, tst):
 
 
 def encode_frq(df1, df2, cols):
+    new_cols = []
     for col in cols:
         df = pd.concat([df1[col], df2[col]])
         vc = df.value_counts(dropna=False, normalize=False).to_dict()
@@ -279,8 +280,10 @@ def encode_frq(df1, df2, cols):
         df1[nm] = df1[nm].astype('float32')
         df2[nm] = df2[col].map(vc)
         df2[nm] = df2[nm].astype('float32')
-        print(nm, ', ', end='\n')
-    return df1, df2
+        # print(nm, ', ', end='\n')
+        new_cols.append(nm)
+    return df1, df2, new_cols
+
 
 if __name__ == '__main__':
 
@@ -315,7 +318,10 @@ if __name__ == '__main__':
     # ----------
 
     # 借鉴梁base
-    trn, tst = encode_frq(trn, tst, cols=['JC_ratio', 'GRJCJS', 'GRZHYE', 'GRZHSNJZYE', 'GRZHDNGJYE', 'DWYJCE'])
+    trn, tst, freq_cols_1 = encode_frq(trn, tst, cols=['JC_ratio', 'GRJCJS', 'GRZHYE', 'GRZHSNJZYE', 'GRZHDNGJYE', 'DWYJCE'])
+
+    # new
+    trn, tst, freq_cols_2 = encode_frq(trn, tst, cols=['DNTQ', 'GRJCJS_1', 'GRJCJS_2', 'DKED_1', 'DKFFE_DKYE'])
 
     # ----------
 
@@ -326,7 +332,7 @@ if __name__ == '__main__':
     trn, tst = bin_feature(trn, tst)
 
     # 衍生特征rank
-    rank_cols = gen_fea_1 + gen_fea_2
+    rank_cols = gen_fea_1 + gen_fea_2       # # + freq_cols_1 + freq_cols_2
     trn, tst = rank_feature(trn, tst, rank_cols)
 
     # # 数值特征分桶后 target encoding，xgb线下略升，波动不大，没试
@@ -345,16 +351,16 @@ if __name__ == '__main__':
 
     model = Model(trn, tst, sub, feature, 'lgb')
     y_pred = model._predict()
-    model._submit('xgb_add_liang_base.csv')
+    # model._submit('xgb_new_add_111111111111111.csv')
 
     """
     lgb:  原始特征分桶  衍生特征rank 统计特征 梁base-freq 线上未测试
-    MEAN-AUC:0.949844, STD-AUC:0.005029
-    MEAN-Score:0.563903, STD-Score:0.020818
+    MEAN-AUC:0.952179, STD-AUC:0.005190
+    MEAN-Score:0.565001, STD-Score:0.023522
     
-    xgb:  原始特征分桶 衍生特征rank 统计特征 梁base-freq 线上0.585660   1175逾期
-    MEAN-AUC:0.951332, STD-AUC:0.004988
-    MEAN-Score:0.566840, STD-Score:0.019259
+    xgb:  原始特征分桶 衍生特征rank 统计特征 梁base-freq 线上0.593585   1180逾期
+    MEAN-AUC:0.952901, STD-AUC:0.005014
+    MEAN-Score:0.571240, STD-Score:0.022085
     """
 
 
