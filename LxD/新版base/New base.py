@@ -6,11 +6,17 @@ import math
 from datetime import datetime
 from sklearn.preprocessing import LabelEncoder
 from model_for_predict import Model
+from easy_ensemble import EasyEnsemble
 from woe import Woe
+from grid import Grid
 from scipy.special import boxcox1p
 from k_means import K_means
 from scipy.stats import entropy
-from helper import kfold_risk_feature
+from helper import kfold_risk_feature, kfold_mean
+
+import xgboost as xgb
+import lightgbm as lgb
+from sklearn.model_selection import GridSearchCV
 
 warnings.filterwarnings('ignore')
 pd.set_option('max.columns', 30)
@@ -44,9 +50,13 @@ def correct_num_fea(trn, tst, correct_bias=True, correct_dkll=False):
             df.loc[year1_M_rate_mask, 'DKLL'] = 2.292
             df.loc[year5_M2_rate_mask, 'DKLL'] = 2.979
 
-            # double_house_mask = df['DKLL'].isin([2.979, 2.521])
-            # df['DKLL_check'] = (year5_M_rate_mask | year5_M2_rate_mask | year1_M_rate_mask).astype(int)
-            # df['double_house'] = (double_house_mask).astype(int)
+            double_house_mask = df['DKLL'].isin([2.979, 2.521])
+            df['DKLL_check'] = (year5_M_rate_mask | year5_M2_rate_mask | year1_M_rate_mask).astype(int)
+            df['double_house'] = (double_house_mask).astype(int)
+
+    # for df in [trn, tst]:
+    #     df['DKLL'] = np.round(df['DKLL'], 3)
+    #     df['flag'] = df['DKLL'].apply(lambda x: 1 if x in [2.521, 2.979, 3.025, 3.575] else 0)
 
     return trn, tst
 
@@ -99,7 +109,9 @@ def bin_feature(trn, tst, ):
 def static_rows(trn, tst):
     """按行统计，如 0 值、缺失值、均值、方差等"""
 
-    cols = ['GRJCJS', 'GRZHYE', 'GRZHSNJZYE', 'GRZHDNGJYE', 'GRYJCE', 'DWYJCE', 'DKFFE', 'DKYE']
+    cat_cols = ['XINGBIE', 'ZHIYE', 'ZHICHEN', 'DWJJLX', 'DWSSHY', 'GRZHZT']
+    # cols = ['GRJCJS', 'GRZHYE', 'GRZHSNJZYE', 'GRZHDNGJYE', 'GRYJCE', 'DWYJCE', 'DKFFE', 'DKYE']
+    cols = [col for col in trn.columns if col not in cat_cols + ['id', 'label']]
 
     trn['nums_zero'] = (trn[cols] == 0).astype(int).sum(axis=1)
     tst['nums_zero'] = (tst[cols] == 0).astype(int).sum(axis=1)
@@ -120,10 +132,6 @@ def static_feature(trn, tst, whole=False):
                 mean_dic = trn.groupby([col_1])[col_2].mean().reset_index().set_index(col_1)[col_2].to_dict()
                 trn[col_1 + '_' + col_2 + '_mean'] = trn[col_1].apply(lambda x: mean_dic[x])
                 tst[col_1 + '_' + col_2 + '_mean'] = tst[col_1].apply(lambda x: mean_dic[x])
-
-                # max_min_dic = trn.groupby([col_1])[col_2].agg(lambda x: max(x) - min(x)).reset_index().set_index(col_1)[col_2].to_dict()
-                # trn[col_1 + '_' + col_2 + '_max_min'] = trn[col_1].apply(lambda x: max_min_dic[x])
-                # tst[col_1 + '_' + col_2 + '_max_min'] = tst[col_1].apply(lambda x: max_min_dic[x])
 
     else:   # 全局统计，下降
         data = pd.concat([trn, tst], axis=0).reset_index(drop=True)
@@ -149,7 +157,7 @@ def jc_fea(trn, tst):
 
         # ------------------------------ new ↓↓ --------------------------------
 
-        # # xgb上升, lgb波动略降。可单独试
+        # # # xgb上升, lgb波动略降。可单独试
         # df['DNGJ_time'] = np.round(df['GRZHDNGJYE'] / (df['DWYJCE'] + df['GRYJCE']), 4)
 
         # df['GRJCJS_age'] = df['GRJCJS'] / df['age']       # xgb略升，拨动极小
@@ -157,6 +165,11 @@ def jc_fea(trn, tst):
         # df['GRZHYE_is_0'] = df['GRZHYE'].apply(lambda x: 1 if x == 0 else 0)
         # df['SNJZ_is_0'] = df['GRZHSNJZYE'].apply(lambda x: 1 if x == 0 else 0)
         # df['DKYE_is_0'] = df['DKYE'].apply(lambda x: 1 if x == 0 else 0)
+
+        # # 每月还贷 = 当年提取总额（4个月） / 4
+        # df['repay_month'] = df['DNTQ'] / 4
+        # df['DKYE_repay_ratio'] = df['repay_month'] / df['GRJCJS']
+        # df.drop(['repay_month'], axis=1, inplace=True)
 
     generate_fea = ['JC_ratio', 'DNTQ']
 
@@ -180,6 +193,10 @@ def dk_fea(trn, tst):
         df['DKFFE_DKYE'] = df['DKFFE'] - df['DKYE']       # 线下lgb下降，xgb上升！！！
 
         # ------------------------------ new ↓↓ --------------------------------
+
+        # df['DKLL'] = np.round(df['DKLL'], 3)
+        # dic = {2.521: 1, 2.979: 2, 3.025: 3, 3.575: 4}
+        # df['DKLL_plus'] = df['DKLL'].apply(lambda x: dic[x] if x in dic else 0)
 
     generate_fea = ['GRJCJS_1', 'GRJCJS_2', 'DKED_1', 'DKFFE_DKYE']
 
@@ -257,7 +274,7 @@ def rank_feature(trn, tst, rank_cols):
 
 def woe_encoding(trn, tst):
 
-    auto_col_bins = {'JC_ratio': 9}        # 定义woe编码目标及分桶数量
+    auto_col_bins = {}
     cat_woe_cols = []
 
     woe = Woe(trn, tst, auto_col_bins=auto_col_bins, cat_woe_cols=cat_woe_cols)
@@ -319,8 +336,6 @@ if __name__ == '__main__':
 
     # 借鉴梁base
     trn, tst, freq_cols_1 = encode_frq(trn, tst, cols=['JC_ratio', 'GRJCJS', 'GRZHYE', 'GRZHSNJZYE', 'GRZHDNGJYE', 'DWYJCE'])
-
-    # new
     trn, tst, freq_cols_2 = encode_frq(trn, tst, cols=['DNTQ', 'GRJCJS_1', 'GRJCJS_2', 'DKED_1', 'DKFFE_DKYE'])
 
     # ----------
@@ -332,12 +347,8 @@ if __name__ == '__main__':
     trn, tst = bin_feature(trn, tst)
 
     # 衍生特征rank
-    rank_cols = gen_fea_1 + gen_fea_2       # # + freq_cols_1 + freq_cols_2
+    rank_cols = gen_fea_1 + gen_fea_2     # # + freq_cols_1 + freq_cols_2
     trn, tst = rank_feature(trn, tst, rank_cols)
-
-    # # 数值特征分桶后 target encoding，xgb线下略升，波动不大，没试
-    # target_encode_cols = num_cols
-    # trn, tst = kfold_risk_feature(trn, tst, target_encode_cols, 5, 1023)
 
     # ----- model -----
 
@@ -349,18 +360,29 @@ if __name__ == '__main__':
     print('Use features num: ', len(feature))
     print('featues: ', feature)
 
-    model = Model(trn, tst, sub, feature, 'lgb')
-    y_pred = model._predict()
-    # model._submit('xgb_new_add_111111111111111.csv')
+    # model = Model(trn, tst, sub, feature, 'lgb')
+    # y_pred, _ = model._predict()
+    # feature_importance_df, selected_feature = model.importance(nums=70)
+    # model._submit('lgb_new_base.csv')
+
+    # 分子集训练
+    # model = EasyEnsemble(trn, tst, sub, feature, sub_nums=5, ratio=0.7)
+    # y_pre = model.get_result()
+    # sub['id'] = tst['id']
+    # sub['label'] = y_pre
+    # sub.to_csv('../result/' + 'lgb_merge_sub.csv', index=False)
 
     """
-    lgb:  原始特征分桶  衍生特征rank 统计特征 梁base-freq 线上未测试
+    lgb:  原始特征分桶  衍生特征rank 统计特征 梁base-freq 线上0.588302, 1153逾期  
     MEAN-AUC:0.952179, STD-AUC:0.005190
     MEAN-Score:0.565001, STD-Score:0.023522
+    
+    lgb:  手动调参，没加正则，线下涨的较多，线上0.590566，怀疑主要改变B榜数据
+    MEAN-AUC:0.952800, STD-AUC:0.004415
+    MEAN-Score:0.576426, STD-Score:0.022706
     
     xgb:  原始特征分桶 衍生特征rank 统计特征 梁base-freq 线上0.593585   1180逾期
     MEAN-AUC:0.952901, STD-AUC:0.005014
     MEAN-Score:0.571240, STD-Score:0.022085
     """
-
 
