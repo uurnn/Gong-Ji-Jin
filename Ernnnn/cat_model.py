@@ -497,7 +497,7 @@ if __name__ == '__main__':
         new_feats = []
 
         ##load loan
-        loan_df = pd.read_csv('./data/DK_data_wc.csv')
+        loan_df = pd.read_csv('./data/data.csv')
         loan_df['DKLL'] = np.round(loan_df['DKLL'],3)
 
         train = train.merge(loan_df,on=['DKFFE','DKYE','DKLL'],how='left')
