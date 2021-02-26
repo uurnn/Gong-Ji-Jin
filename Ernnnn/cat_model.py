@@ -306,7 +306,7 @@ def freq_encode(df1, df2, cols):
     for col in cols:
         df = pd.concat([df1[col], df2[col]])
         vc = df.value_counts(dropna=False, normalize=False).to_dict()
-        # vc[-1] = -1
+        vc[-1] = -1
         nm = col + '_FrqEnc'
         df1[nm] = df1[col].map(vc)
         df1[nm] = df1[nm].astype('float32')
