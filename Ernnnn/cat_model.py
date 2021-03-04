@@ -271,7 +271,7 @@ class make_test():
         print('null in sub', '\n', sub.isnull().sum())
         sub.fillna(0, inplace=True)
         score = str(np.round(self.m_score[-1][0], 4)) + "_" + str(np.round(self.m_score[-1][1], 4))
-        sub.to_csv(f'./result/sub_{today}_{score}.csv', index=False)
+        sub.to_csv(f'sub_{today}_{score}.csv', index=False)
 
 def category_encoding(train, test, cols):
     category_feats = []
