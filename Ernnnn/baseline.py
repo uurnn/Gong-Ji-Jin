@@ -204,7 +204,6 @@ class make_test():
 
     def submit(self):
         today = time.strftime("%Y-%m-%d", time.localtime())[5:]
-
         self.test[self.label] = self.predictions
         sub_train = self.test[['id', self.label]].copy()
         sub_test = pd.read_csv('./data/submit.csv')
@@ -214,7 +213,7 @@ class make_test():
         plt.show()
         sub.fillna(0, inplace=True)
         score = str(np.round(self.m_score[-1][0], 4)) + "_" + str(np.round(self.m_score[-1][1], 4))
-        sub.to_csv(f'./result/sub_{today}_{score}.csv', index=False)
+        sub.to_csv(f'sub_{today}_{score}.csv', index=False)
 
 def encode_frq(df1,df2,cols):
     add_features = []
@@ -242,10 +241,6 @@ if __name__ == '__main__':
     ID = 'id'
 
     train, test = load_data()
-    feature_select = False
-
-    remove_feat = ['id', label, 'GRYJCE', 'HYZK', 'ZHIWU', 'XUELI', 'ZHIYE', 'ZHICHEN',
-                   'noise_sample', 'time', 'CSNY', 'month']
 
     def add_person_features(dl_time=True):
         global train, test
@@ -269,15 +264,9 @@ if __name__ == '__main__':
 
         return new_feats
 
-    def add_dw_features(clean_outlier=False,test_dw_feats=True):
+    def add_dw_features(test_dw_feats=True):
         global train, test
 
-        if clean_outlier:
-            train['DWSSHY'] = train['DWSSHY'].map(lambda x:99 if x in [19,20] else x)
-            test['DWSSHY'] = test['DWSSHY'].map(lambda x:99 if x in [19,20] else x)
-
-            # train['DWSSHY'] = train['DWSSHY'].map(lambda x: np.nan if x in [19,20] else x)
-            # test['DWSSHY'] = test['DWSSHY'].map(lambda x: np.nan if x in [19,20] else x)
 
         new_feats = []
         for col in ['DWJJLX', 'DWSSHY']:
@@ -379,7 +368,7 @@ if __name__ == '__main__':
     dk_features,base_dk_features = add_dk_features(test_dk_feats=False)
 
     dw_features = add_dw_features(clean_outlier=False,test_dw_feats=False)
-
+    
     model_params = load_params(seed)
     m_score = [[0.9474181440647862, 0.5618425825172289]]
 
@@ -390,5 +379,4 @@ if __name__ == '__main__':
 
     mt.init_CV(seed,n_split=5)
     oof, _ = mt.lgb_test(lgb_params=model_params['lgb'])
-    # mt.submit()
-
+    mt.submit()
