@@ -11,11 +11,11 @@ package:（注意！不同的文件需要不同的运行环境）
 
     numpy  	    1.19.5
     
-    pandas 	    1.2.1或1.0.5版本，详情见后面的运行环境
+    pandas 	    1.2.1
     
-    catboost 	0.23.2版本
+    catboost 	0.23.2
   
-    lightgbm 	3.1.1或2.3.0版本，详情见后面的运行环境
+    lightgbm 	3.1.1
   
     tqdm  		4.56.0
   
